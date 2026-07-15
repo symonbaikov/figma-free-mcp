@@ -21,10 +21,12 @@ export interface AgentNode {
   opacity?: number;
   blendMode?: unknown;
   assetRefs: AssetReference[];
+  readyAssetRefs: ReadyAssetReference[];
   vectorRef?: VectorReference;
 }
 
 export interface AssetReference { hash: string; path: string; kind: 'image-fill'; }
+export interface ReadyAssetReference { id: string; sourceNodeId: string; path: string; kind: 'rendered-vector-subtree'; format: 'png'; width: number; height: number; scale: number; sha256: string; }
 export interface VectorReference { blobId: number; path: string; format: 'kiwi-vector-network'; compression: 'gzip'; }
 
 export interface AgentDocument {
@@ -34,10 +36,10 @@ export interface AgentDocument {
   nodesById: Record<string, AgentNode>;
 }
 
-export interface NormalizeOptions { originFileKey?: string; assetPaths?: Readonly<Record<string, string>>; vectorPaths?: Readonly<Record<number, string>>; }
+export interface NormalizeOptions { originFileKey?: string; assetPaths?: Readonly<Record<string, string>>; vectorPaths?: Readonly<Record<number, string>>; readyAssetPaths?: Readonly<Record<string, ReadyAssetReference>>; }
 
 export function normalizeDocument(changes: readonly Record<string, unknown>[], options: NormalizeOptions = {}): AgentDocument {
-  const nodes = changes.map((change, zIndex) => normalizeNode(change, zIndex, options.assetPaths, options.vectorPaths));
+  const nodes = changes.map((change, zIndex) => normalizeNode(change, zIndex, options.assetPaths, options.vectorPaths, options.readyAssetPaths));
   const nodesById = Object.fromEntries(nodes.map((node) => [node.id, node]));
   const roots: string[] = [];
   changes.forEach((change, index) => {
@@ -81,7 +83,7 @@ function fileKeyFromReference(reference: string): string | undefined {
   try { const match = new URL(reference).pathname.match(/\/(?:design|file)\/([^/?#]+)/i); return match?.[1] ? decodeURIComponent(match[1]) : undefined; } catch { return undefined; }
 }
 
-function normalizeNode(change: Record<string, unknown>, zIndex: number, assetPaths: Readonly<Record<string, string>> | undefined, vectorPaths: Readonly<Record<number, string>> | undefined): AgentNode {
+function normalizeNode(change: Record<string, unknown>, zIndex: number, assetPaths: Readonly<Record<string, string>> | undefined, vectorPaths: Readonly<Record<number, string>> | undefined, readyAssetPaths: Readonly<Record<string, ReadyAssetReference>> | undefined): AgentNode {
   const id = idFromGuid(change.guid, zIndex);
   const textData = record(change.textData);
   const layoutKeys = ['stackMode', 'stackSpacing', 'stackHorizontalPadding', 'stackVerticalPadding', 'stackPrimaryAlignItems', 'stackCounterAlignItems'];
@@ -93,7 +95,7 @@ function normalizeNode(change: Record<string, unknown>, zIndex: number, assetPat
     ...(typeof textData?.characters === 'string' ? { text: textData.characters } : {}), ...(textLayout && Object.keys(textLayout).length ? { textLayout } : {}),
     ...(change.size === undefined ? {} : { bounds: change.size }), ...(change.transform === undefined ? {} : { transform: change.transform }),
     ...(typeof change.visible === 'boolean' ? { visible: change.visible } : {}), ...(typeof change.opacity === 'number' ? { opacity: change.opacity } : {}), ...(change.blendMode === undefined ? {} : { blendMode: change.blendMode }), constraints: { horizontal: change.horizontalConstraint, vertical: change.verticalConstraint },
-    layout: pick(change, layoutKeys), fills: change.fillPaints, strokes: change.strokePaints, effects: change.effects, typography: pick(change, typographyKeys), assetRefs: assetReferences(change.fillPaints, assetPaths), ...(vectorReference(change.vectorData, vectorPaths) ? { vectorRef: vectorReference(change.vectorData, vectorPaths) } : {})
+    layout: pick(change, layoutKeys), fills: change.fillPaints, strokes: change.strokePaints, effects: change.effects, typography: pick(change, typographyKeys), assetRefs: assetReferences(change.fillPaints, assetPaths), readyAssetRefs: readyAssetReference(id, readyAssetPaths), ...(vectorReference(change.vectorData, vectorPaths) ? { vectorRef: vectorReference(change.vectorData, vectorPaths) } : {})
   };
 }
 function vectorReference(value: unknown, vectorPaths: Readonly<Record<number, string>> | undefined): VectorReference | undefined {
@@ -107,6 +109,10 @@ function assetReferences(value: unknown, assetPaths: Readonly<Record<string, str
   const refs: AssetReference[] = [];
   for (const paint of value) { const hash = hashToHex(record(record(paint)?.image)?.hash); if (!hash) continue; const path = assetPaths[hash]; if (path) refs.push({ hash, path, kind: 'image-fill' }); }
   return refs;
+}
+function readyAssetReference(nodeId: string, readyAssetPaths: Readonly<Record<string, ReadyAssetReference>> | undefined): ReadyAssetReference[] {
+  const reference = readyAssetPaths?.[nodeId];
+  return reference ? [reference] : [];
 }
 export function hashToHex(value: unknown): string | undefined {
   if (value instanceof Uint8Array) return Buffer.from(value).toString('hex');

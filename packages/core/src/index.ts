@@ -4,7 +4,7 @@ export { readFigArchive } from './archive/read-archive.js';
 export { defaultArchiveLimits, type ArchiveLimits, type FigArchive, type FigImage } from './archive/types.js';
 export { decodeKiwiCanvas } from './decoder/kiwi.js';
 export { type DecodedFig } from './decoder/types.js';
-export { normalizeDocument, resolveNodeReference, canonicalNodeId, hashToHex, type AgentDocument, type AgentNode, type AssetReference } from './normalize/document.js';
+export { normalizeDocument, resolveNodeReference, canonicalNodeId, hashToHex, type AgentDocument, type AgentNode, type AssetReference, type ReadyAssetReference } from './normalize/document.js';
 export { extractTokens, type ExtractedTokens, type StyleToken, type FontRequirement } from './tokens/extract.js';
 export { writeBundle, type BundleInput, type BundleVector } from './bundle/write-bundle.js';
 export { extractFig, type ExtractionResult } from './extract.js';

@@ -33,6 +33,40 @@ describe('normalized document', () => {
     expect(normalized.nodesById['2:5']!.vectorRef).toEqual({ blobId: 7, path: 'assets/vectors/vector-network-7.bin.gz', format: 'kiwi-vector-network', compression: 'gzip' });
   });
 
+  test('links a rendered vector subtree to its ready PNG asset path', () => {
+    const normalized = normalizeDocument([
+      { guid: { sessionID: 6, localID: 1 }, type: 'FRAME', name: 'Layer_1' }
+    ], {
+      readyAssetPaths: {
+        '6:1': {
+          id: 'rendered-vector-subtree-6_1',
+          sourceNodeId: '6:1',
+          path: 'assets/ready/rendered-vector-subtree-6_1.png',
+          kind: 'rendered-vector-subtree',
+          format: 'png',
+          width: 253,
+          height: 240,
+          scale: 2,
+          sha256: '00'.repeat(32)
+        }
+      }
+    });
+
+    expect(normalized.nodesById['6:1']!.readyAssetRefs).toEqual([
+      {
+        id: 'rendered-vector-subtree-6_1',
+        sourceNodeId: '6:1',
+        path: 'assets/ready/rendered-vector-subtree-6_1.png',
+        kind: 'rendered-vector-subtree',
+        format: 'png',
+        width: 253,
+        height: 240,
+        scale: 2,
+        sha256: '00'.repeat(32)
+      }
+    ]);
+  });
+
   test('collects every descendant text and asset for a frame context', () => {
     const normalized = normalizeDocument([
       { guid: { sessionID: 4, localID: 1 }, type: 'FRAME' },
@@ -43,6 +77,36 @@ describe('normalized document', () => {
     expect(context.nodeIds).toEqual(['4:1', '4:2', '4:3']);
     expect(context.text).toEqual([expect.objectContaining({ id: '4:2', text: 'Nested' })]);
     expect(context.assets).toEqual([{ hash: '01'.repeat(20), path: 'assets/images/nested.png', kind: 'image-fill' }]);
+  });
+
+  test('collects descendant ready assets for a frame context', () => {
+    const normalized = normalizeDocument([
+      { guid: { sessionID: 7, localID: 1 }, type: 'FRAME', name: 'Card' },
+      { guid: { sessionID: 7, localID: 2 }, type: 'FRAME', name: 'Layer_1', parentIndex: 0 }
+    ], {
+      readyAssetPaths: {
+        '7:2': {
+          id: 'rendered-vector-subtree-7_2',
+          sourceNodeId: '7:2',
+          path: 'assets/ready/rendered-vector-subtree-7_2.png',
+          kind: 'rendered-vector-subtree',
+          format: 'png',
+          width: 120,
+          height: 80,
+          scale: 2,
+          sha256: '11'.repeat(32)
+        }
+      }
+    });
+
+    const context = buildNodeContext(normalized, normalized.nodesById['7:1']!);
+    expect(context.readyAssets).toEqual([
+      expect.objectContaining({
+        id: 'rendered-vector-subtree-7_2',
+        sourceNodeId: '7:2',
+        path: 'assets/ready/rendered-vector-subtree-7_2.png'
+      })
+    ]);
   });
 
   test('retains Figma-computed text layout and visibility fields', () => {
