@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { normalizeDocument } from '../src/normalize/document.js';
 import { renderReadyAssets } from '../src/render/render-ready-assets.js';
+import { renderSubtreeToSvg } from '../src/render/svg-scene.js';
 import { findReadyAssetTargets } from '../src/render/targets.js';
 
 describe('ready vector asset rendering', () => {
@@ -49,6 +50,64 @@ describe('ready vector asset rendering', () => {
     expect(result.readyAssetRefs['9:1']!.path).toBe('assets/ready/rendered-vector-subtree-9_1.png');
   });
 
+  test('preserves scaled and rotated ancestor transforms in the generated SVG', () => {
+    const changes = [
+      { guid: { sessionID: 11, localID: 1 }, type: 'FRAME', name: 'Layer_1', size: { x: 24, y: 24 } },
+      {
+        guid: { sessionID: 11, localID: 2 },
+        type: 'FRAME',
+        name: 'Rotated',
+        parentIndex: 0,
+        transform: { m00: 0, m01: -2, m02: 5, m10: 2, m11: 0, m12: 7 }
+      },
+      {
+        guid: { sessionID: 11, localID: 3 },
+        type: 'VECTOR',
+        name: 'Vector',
+        parentIndex: 1,
+        size: { x: 2, y: 2 },
+        transform: { m00: 3, m01: 0, m02: 3, m10: 0, m11: 3, m12: 4 },
+        fillPaints: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }],
+        vectorData: { vectorNetworkBlob: 7, normalizedSize: { x: 2, y: 2 } }
+      }
+    ];
+    const document = normalizeDocument(changes, { vectorPaths: { 7: 'assets/vectors/vector-network-7.bin.gz' } });
+    const svg = renderSubtreeToSvg({
+      document,
+      root: document.nodesById['11:1']!,
+      changesById: changesByNodeId(changes),
+      vectorBytesByBlobId: new Map([[7, makeRectVectorNetworkBlob(2, 2)]])
+    });
+
+    expect(svg).toContain('transform="matrix(0 6 -6 0 -3 13)"');
+    expect(svg).not.toContain('transform="translate(');
+  });
+
+  test('does not select or render hidden vector-only roots or groups', async () => {
+    const changes = [
+      { guid: { sessionID: 12, localID: 1 }, type: 'FRAME', name: 'HiddenRoot', size: { x: 16, y: 16 }, visible: false },
+      { guid: { sessionID: 12, localID: 2 }, type: 'VECTOR', name: 'RootVector', parentIndex: 0, vectorData: { vectorNetworkBlob: 7 } },
+      { guid: { sessionID: 12, localID: 3 }, type: 'FRAME', name: 'VisibleRoot', size: { x: 16, y: 16 } },
+      { guid: { sessionID: 12, localID: 4 }, type: 'FRAME', name: 'HiddenGroup', parentIndex: 2, visible: false },
+      { guid: { sessionID: 12, localID: 5 }, type: 'VECTOR', name: 'GroupVector', parentIndex: 3, vectorData: { vectorNetworkBlob: 7 } }
+    ];
+    const document = normalizeDocument(changes, { vectorPaths: { 7: 'assets/vectors/vector-network-7.bin.gz' } });
+    const vectors = [{ blobId: 7, bytes: makeRectVectorNetworkBlob(10, 10) }];
+
+    expect(findReadyAssetTargets(document).map((node) => node.id)).toEqual([]);
+    await expect(renderReadyAssets({ document, changes, vectors })).resolves.toMatchObject({
+      readyAssets: [],
+      readyAssetRefs: {},
+      warnings: []
+    });
+    expect(renderSubtreeToSvg({
+      document,
+      root: document.nodesById['12:1']!,
+      changesById: changesByNodeId(changes),
+      vectorBytesByBlobId: new Map([[7, makeRectVectorNetworkBlob(10, 10)]])
+    })).not.toContain('<path');
+  });
+
   test('returns an unsupported vector warning without dropping the original vector reference', async () => {
     const changes = [
       { guid: { sessionID: 10, localID: 1 }, type: 'FRAME', name: 'Layer_1', size: { x: 16, y: 16 } },
@@ -84,4 +143,13 @@ function makeRectVectorNetworkBlob(width: number, height: number): Uint8Array {
   const points = [0, 0, width, 0, width, height, 0, height];
   points.forEach((value, index) => view.setFloat32(12 + index * 4, value, true));
   return new Uint8Array(buffer);
+}
+
+function changesByNodeId(changes: readonly Record<string, unknown>[]): Map<string, Record<string, unknown>> {
+  return new Map(changes.map((change, index) => [idFromGuid(change.guid, index), change]));
+}
+
+function idFromGuid(value: unknown, fallback: number): string {
+  const guid = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+  return typeof guid?.sessionID === 'number' && typeof guid.localID === 'number' ? `${guid.sessionID}:${guid.localID}` : `index:${fallback}`;
 }
