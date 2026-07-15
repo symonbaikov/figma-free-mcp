@@ -105,6 +105,8 @@ only; they do not need to reopen the original `.fig` file.
 ├── assets/thumbnail.png
 ├── assets/vectors.json
 ├── assets/vectors/
+├── assets/ready.json
+├── assets/ready/
 ├── references/index.json
 ├── references/<node-id>.png
 ├── comparisons/<node-id>/report.json
@@ -137,6 +139,11 @@ only; they do not need to reopen the original `.fig` file.
   gzip-compressed local path; `document.agent.json` carries that same
   `vectorRef` and compression marker. They are preserved losslessly for a
   decoder adapter instead of being inaccurately converted to SVG.
+- `assets/ready/` contains deterministic PNG renders for maximal vector-only
+  subtrees. These are convenience assets for implementation work: the original
+  vector-network blobs remain available through `assets/vectors/` and
+  `vectorRef`, while `document.agent.json` and `pack` expose `readyAssetRefs`
+  for nodes whose vector subtree was rendered successfully.
 - `frames/*/context.md` is a deterministic, compact summary for every canvas
   and top-level frame. Nested frames remain fully addressable with `pack` and
   are intentionally not duplicated as thousands of tiny files.
@@ -213,7 +220,8 @@ The test suite has three layers:
 
 ## Non-goals for the first release
 
-- Screenshot-perfect rendering
+- General screenshot-perfect rendering; ready vector PNGs are best-effort
+  convenience assets and preserve the original `vectorRef` diagnostics.
 - A Figma API client, Figma MCP client, or browser automation
 - Editing or writing `.fig` files
 - A hosted service

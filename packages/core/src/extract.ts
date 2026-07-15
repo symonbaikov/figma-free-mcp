@@ -2,13 +2,16 @@ import { basename } from 'node:path';
 import { readFigArchive } from './archive/read-archive.js';
 import { writeBundle } from './bundle/write-bundle.js';
 import { decodeKiwiCanvas } from './decoder/kiwi.js';
-import { normalizeDocument, type AgentDocument } from './normalize/document.js';
+import { canonicalNodeId, normalizeDocument, type AgentDocument, type AgentNode } from './normalize/document.js';
+import { renderReadyAssets } from './render/render-ready-assets.js';
 import { extensionForAsset } from './assets.js';
 import { extractTokens } from './tokens/extract.js';
+import { FigctxError } from './errors.js';
 
+export interface ExtractionOptions { renderNode?: string; }
 export interface ExtractionResult { agent: AgentDocument; outDir: string; }
 
-export async function extractFig(sourcePath: string, outDir: string): Promise<ExtractionResult> {
+export async function extractFig(sourcePath: string, outDir: string, options: ExtractionOptions = {}): Promise<ExtractionResult> {
   const archive = await readFigArchive(sourcePath);
   const decoded = decodeKiwiCanvas(archive.canvas);
   const assetPaths = Object.fromEntries(archive.images.map((image) => [image.hash, `assets/images/${image.hash}.${extensionForAsset(image.format) ?? 'bin'}`]));
@@ -24,13 +27,52 @@ export async function extractFig(sourcePath: string, outDir: string): Promise<Ex
     return bytes ? [{ blobId, bytes }] : [];
   });
   const vectorPaths = Object.fromEntries(vectors.map((vector) => [vector.blobId, `assets/vectors/vector-network-${vector.blobId}.bin.gz`]));
-  const agent = normalizeDocument(decoded.nodeChanges, { originFileKey, assetPaths, vectorPaths });
+  const firstPassAgent = normalizeDocument(decoded.nodeChanges, { originFileKey, assetPaths, vectorPaths });
+  const renderRoot = options.renderNode ? firstPassAgent.nodesById[canonicalNodeId(options.renderNode)] : undefined;
+  if (options.renderNode && !renderRoot) throw new FigctxError('NODE_NOT_FOUND', `No node matches ${options.renderNode}.`);
+  const targetNodeIds = renderRoot ? descendantIds(firstPassAgent, renderRoot) : undefined;
+  const rendered = await renderReadyAssets({ document: firstPassAgent, changes: decoded.nodeChanges, vectors, targetNodeIds });
+  const agent = normalizeDocument(decoded.nodeChanges, {
+    originFileKey,
+    assetPaths,
+    vectorPaths,
+    readyAssetPaths: rendered.readyAssetRefs
+  });
   await writeBundle({
     outDir,
-    manifest: { contractVersion: '1', parserVersion: decoded.decoderVersion, status: 'success', sourceFilename: basename(sourcePath), sourceSha256: archive.sourceSha256, ...(originFileKey ? { originFileKey } : {}), canvasVariant: archive.canvasVariant, nodeCount: decoded.nodeChanges.length, visualBaseline: archive.thumbnail ? 'assets/thumbnail.png' : undefined },
+    manifest: {
+      contractVersion: '1',
+      parserVersion: decoded.decoderVersion,
+      status: 'success',
+      sourceFilename: basename(sourcePath),
+      sourceSha256: archive.sourceSha256,
+      ...(originFileKey ? { originFileKey } : {}),
+      canvasVariant: archive.canvasVariant,
+      nodeCount: decoded.nodeChanges.length,
+      readyAssetCount: rendered.readyAssets.length,
+      ...(rendered.warnings.length ? { warnings: rendered.warnings } : {}),
+      visualBaseline: archive.thumbnail ? 'assets/thumbnail.png' : undefined
+    },
     raw: { decoderVersion: decoded.decoderVersion, canvasVersion: decoded.canvasVersion, document: decoded.document },
     agent,
-    images: archive.images, vectors, readyAssets: [], thumbnail: archive.thumbnail, tokens: extractTokens(agent)
+    images: archive.images,
+    vectors,
+    readyAssets: rendered.readyAssets,
+    thumbnail: archive.thumbnail,
+    tokens: extractTokens(agent)
   });
   return { agent, outDir };
+}
+
+function descendantIds(document: AgentDocument, root: AgentNode): ReadonlySet<string> {
+  const ids = new Set<string>();
+  const visit = (node: AgentNode) => {
+    ids.add(node.id);
+    for (const childId of node.childIds) {
+      const child = document.nodesById[childId];
+      if (child) visit(child);
+    }
+  };
+  visit(root);
+  return ids;
 }

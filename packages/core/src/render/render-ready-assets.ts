@@ -7,10 +7,13 @@ import { findReadyAssetTargets } from './targets.js';
 import type { ReadyAssetRenderResult, ReadyAssetWarning } from './types.js';
 import { UnsupportedVectorNetworkError } from './vector-network.js';
 
+const MAX_READY_ASSET_OUTPUT_PIXELS = 1_000_000;
+
 export interface RenderReadyAssetsInput {
   document: AgentDocument;
   changes: readonly Record<string, unknown>[];
   vectors: readonly BundleVector[];
+  targetNodeIds?: ReadonlySet<string>;
   scale?: number;
 }
 
@@ -22,13 +25,22 @@ export async function renderReadyAssets(input: RenderReadyAssetsInput): Promise<
   const readyAssetRefs: Record<string, ReadyAssetReference> = {};
   const warnings: ReadyAssetWarning[] = [];
 
-  for (const target of findReadyAssetTargets(input.document)) {
+  for (const target of findReadyAssetTargets(input.document).filter((node) => !input.targetNodeIds || input.targetNodeIds.has(node.id))) {
     try {
+      const size = sizeFromBounds(target.bounds);
+      const outputPixels = size.width * size.height * scale * scale;
+      if (outputPixels > MAX_READY_ASSET_OUTPUT_PIXELS) {
+        warnings.push({
+          code: 'READY_ASSET_TOO_LARGE',
+          nodeId: target.id,
+          message: `Ready asset render would be ${size.width * scale}x${size.height * scale}px, exceeding ${MAX_READY_ASSET_OUTPUT_PIXELS} output pixels.`
+        });
+        continue;
+      }
       const svg = renderSubtreeToSvg({ document: input.document, root: target, changesById, vectorBytesByBlobId });
       const png = new Resvg(svg, { fitTo: { mode: 'zoom', value: scale } }).render().asPng();
       const bytes = new Uint8Array(png);
       const id = `rendered-vector-subtree-${target.id.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-      const size = sizeFromBounds(target.bounds);
       const sha256 = createHash('sha256').update(bytes).digest('hex');
       const reference: ReadyAssetReference = {
         id,

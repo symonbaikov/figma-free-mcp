@@ -6,8 +6,8 @@ import { Command } from 'commander';
 import { auditFontRequirements, buildNodeContext, comparePng, describePng, extractFig, FigctxError, resolveNodeReference, type AgentDocument, type AvailableFont, type FontRequirement } from '@figctx/core';
 
 const program = new Command().name('figctx').description('Extract local Figma .fig context bundles');
-program.command('extract <file>').requiredOption('--out <directory>').action(async (file, options) => {
-  const result = await extractFig(file, options.out);
+program.command('extract <file>').requiredOption('--out <directory>').option('--render-node <reference>', 'Render ready vector assets only for this local node subtree.').action(async (file, options) => {
+  const result = await extractFig(file, options.out, { renderNode: options.renderNode });
   process.stdout.write(JSON.stringify({ out: result.outDir, nodes: Object.keys(result.agent.nodesById).length }) + '\n');
 });
 program.command('resolve <bundle> <reference>').action(async (bundle, reference) => {

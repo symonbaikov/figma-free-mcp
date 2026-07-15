@@ -3,6 +3,7 @@ import { normalizeDocument } from '../src/normalize/document.js';
 import { renderReadyAssets } from '../src/render/render-ready-assets.js';
 import { renderSubtreeToSvg } from '../src/render/svg-scene.js';
 import { findReadyAssetTargets } from '../src/render/targets.js';
+import { vectorNetworkToPaths } from '../src/render/vector-network.js';
 
 describe('ready vector asset rendering', () => {
   test('selects maximal vector-only subtrees without selecting nested fragments', () => {
@@ -48,6 +49,67 @@ describe('ready vector asset rendering', () => {
     });
     expect(Array.from(result.readyAssets[0]!.bytes.slice(0, 4))).toEqual([0x89, 0x50, 0x4e, 0x47]);
     expect(result.readyAssetRefs['9:1']!.path).toBe('assets/ready/rendered-vector-subtree-9_1.png');
+  });
+
+  test('ready asset refs can be attached by a second normalization pass', async () => {
+    const changes = [
+      { guid: { sessionID: 10, localID: 1 }, type: 'FRAME', name: 'Layer_1', size: { x: 16, y: 16 } },
+      { guid: { sessionID: 10, localID: 2 }, type: 'VECTOR', name: 'Vector', parentIndex: 0, vectorData: { vectorNetworkBlob: 7 }, size: { x: 10, y: 10 }, fillPaints: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 } }] }
+    ];
+    const firstPass = normalizeDocument(changes, { vectorPaths: { 7: 'assets/vectors/vector-network-7.bin.gz' } });
+    const rendered = await renderReadyAssets({ document: firstPass, changes, vectors: [{ blobId: 7, bytes: makeRectVectorNetworkBlob(10, 10) }] });
+    const secondPass = normalizeDocument(changes, {
+      vectorPaths: { 7: 'assets/vectors/vector-network-7.bin.gz' },
+      readyAssetPaths: rendered.readyAssetRefs
+    });
+
+    expect(secondPass.nodesById['10:1']!.readyAssetRefs).toHaveLength(1);
+  });
+
+  test('can render only targets inside a selected node subtree', async () => {
+    const changes = [
+      { guid: { sessionID: 13, localID: 1 }, type: 'FRAME', name: 'Selected', size: { x: 16, y: 16 } },
+      { guid: { sessionID: 13, localID: 2 }, type: 'VECTOR', name: 'SelectedVector', parentIndex: 0, vectorData: { vectorNetworkBlob: 7 }, fillPaints: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 } }] },
+      { guid: { sessionID: 13, localID: 3 }, type: 'FRAME', name: 'Other', size: { x: 16, y: 16 } },
+      { guid: { sessionID: 13, localID: 4 }, type: 'VECTOR', name: 'OtherVector', parentIndex: 2, vectorData: { vectorNetworkBlob: 7 }, fillPaints: [{ type: 'SOLID', color: { r: 0, g: 0, b: 1, a: 1 } }] }
+    ];
+    const document = normalizeDocument(changes, { vectorPaths: { 7: 'assets/vectors/vector-network-7.bin.gz' } });
+    const rendered = await renderReadyAssets({
+      document,
+      changes,
+      vectors: [{ blobId: 7, bytes: makeRectVectorNetworkBlob(10, 10) }],
+      targetNodeIds: new Set(['13:1', '13:2'])
+    });
+
+    expect(rendered.readyAssets.map((asset) => asset.sourceNodeId)).toEqual(['13:1']);
+  });
+
+  test('parses real vector-network blobs with 16-byte headers and 12-byte vertex records', () => {
+    expect(vectorNetworkToPaths(makeRealRectVectorNetworkBlob(10, 5))).toEqual([
+      { d: 'M 0 0 L 10 0 L 10 5 L 0 5 Z' }
+    ]);
+    expect(vectorNetworkToPaths(makeRealRectVectorNetworkBlob(10, 5, 108))).toEqual([
+      { d: 'M 0 0 L 10 0 L 10 5 L 0 5 Z' }
+    ]);
+  });
+
+  test('skips oversized ready assets before rasterization', async () => {
+    const changes = [
+      { guid: { sessionID: 13, localID: 1 }, type: 'FRAME', name: 'HugeVectorRoot', size: { x: 800, y: 400 } },
+      { guid: { sessionID: 13, localID: 2 }, type: 'VECTOR', name: 'Vector', parentIndex: 0, vectorData: { vectorNetworkBlob: 7 }, size: { x: 10, y: 10 } }
+    ];
+    const document = normalizeDocument(changes, { vectorPaths: { 7: 'assets/vectors/vector-network-7.bin.gz' } });
+
+    const result = await renderReadyAssets({ document, changes, vectors: [{ blobId: 7, bytes: makeRectVectorNetworkBlob(10, 10) }], scale: 2 });
+
+    expect(result.readyAssets).toEqual([]);
+    expect(result.readyAssetRefs).toEqual({});
+    expect(result.warnings).toEqual([
+      expect.objectContaining({
+        code: 'READY_ASSET_TOO_LARGE',
+        nodeId: '13:1'
+      })
+    ]);
   });
 
   test('preserves scaled and rotated ancestor transforms in the generated SVG', () => {
@@ -142,6 +204,18 @@ function makeRectVectorNetworkBlob(width: number, height: number): Uint8Array {
   view.setUint32(8, 1, true);
   const points = [0, 0, width, 0, width, height, 0, height];
   points.forEach((value, index) => view.setFloat32(12 + index * 4, value, true));
+  return new Uint8Array(buffer);
+}
+
+function makeRealRectVectorNetworkBlob(width: number, height: number, trailingBytes = 0): Uint8Array {
+  const buffer = new ArrayBuffer(16 + 4 * 12 + trailingBytes);
+  const view = new DataView(buffer);
+  view.setUint32(0, 4, true);
+  view.setUint32(4, 4, true);
+  view.setUint32(8, 0, true);
+  view.setUint32(12, 0, true);
+  const points = [0, 0, 0, width, 0, 0, width, height, 0, 0, height, 0];
+  points.forEach((value, index) => view.setFloat32(16 + index * 4, value, true));
   return new Uint8Array(buffer);
 }
 
