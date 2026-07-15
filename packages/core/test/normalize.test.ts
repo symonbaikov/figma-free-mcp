@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { hashToHex, normalizeDocument, resolveNodeReference } from '../src/normalize/document.js';
+import { hashToHex, normalizeDocument, resolveNodeReference, type AgentDocument } from '../src/normalize/document.js';
 import { buildNodeContext } from '../src/context/node-context.js';
 
 const document = normalizeDocument([
@@ -107,6 +107,36 @@ describe('normalized document', () => {
         path: 'assets/ready/rendered-vector-subtree-7_2.png'
       })
     ]);
+  });
+
+  test('treats old bundle nodes without ready asset references as having none', () => {
+    const oldBundle = {
+      contractVersion: '1',
+      rootIds: ['8:1'],
+      nodesById: {
+        '8:1': {
+          id: '8:1',
+          name: 'Legacy Frame',
+          type: 'FRAME',
+          childIds: ['8:2'],
+          zIndex: 0,
+          assetRefs: []
+        },
+        '8:2': {
+          id: '8:2',
+          name: 'Legacy Child',
+          type: 'RECTANGLE',
+          parentId: '8:1',
+          childIds: [],
+          zIndex: 1,
+          assetRefs: []
+        }
+      }
+    } as unknown as AgentDocument;
+
+    const context = buildNodeContext(oldBundle, oldBundle.nodesById['8:1']!);
+
+    expect(context.readyAssets).toEqual([]);
   });
 
   test('retains Figma-computed text layout and visibility fields', () => {

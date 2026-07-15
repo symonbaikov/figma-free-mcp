@@ -21,7 +21,7 @@ export function buildNodeContext(document: AgentDocument, node: AgentNode): Node
   const visit = (current: AgentNode) => { nodes.push(current); for (const childId of current.childIds) { const child = document.nodesById[childId]; if (child) visit(child); } };
   visit(node);
   const assets = unique(nodes.flatMap((item) => item.assetRefs), (item) => item.path);
-  const readyAssets = unique(nodes.flatMap((item) => item.readyAssetRefs), (item) => item.path);
+  const readyAssets = unique(nodes.flatMap((item) => item.readyAssetRefs ?? []), (item) => item.path);
   const vectors = unique(nodes.flatMap((item) => item.vectorRef ? [item.vectorRef] : []), (item) => item.path);
   const text = nodes.filter((item) => item.text !== undefined).map(({ id, name, text: value, typography }) => ({ id, name, text: value!, typography }));
   return { node, ancestors, nodes, text, assets, readyAssets, vectors, nodeIds: nodes.map((item) => item.id) };
