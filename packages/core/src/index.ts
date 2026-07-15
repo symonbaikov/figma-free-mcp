@@ -6,7 +6,7 @@ export { decodeKiwiCanvas } from './decoder/kiwi.js';
 export { type DecodedFig } from './decoder/types.js';
 export { normalizeDocument, resolveNodeReference, canonicalNodeId, hashToHex, type AgentDocument, type AgentNode, type AssetReference, type ReadyAssetReference } from './normalize/document.js';
 export { extractTokens, type ExtractedTokens, type StyleToken, type FontRequirement } from './tokens/extract.js';
-export { writeBundle, type BundleInput, type BundleVector } from './bundle/write-bundle.js';
+export { writeBundle, type BundleInput, type BundleVector, type BundleReadyAsset } from './bundle/write-bundle.js';
 export { extractFig, type ExtractionResult } from './extract.js';
 export { buildNodeContext, type NodeContext } from './context/node-context.js';
 export { comparePng, describePng, type PixelComparison, type PngDescription } from './visual/compare.js';

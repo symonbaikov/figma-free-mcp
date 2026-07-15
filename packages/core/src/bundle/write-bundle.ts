@@ -9,7 +9,8 @@ import type { ExtractedTokens } from '../tokens/extract.js';
 
 export interface BundleImage { hash: string; bytes: Uint8Array; format: AssetFormat; }
 export interface BundleVector { blobId: number; bytes: Uint8Array; }
-export interface BundleInput { outDir: string; manifest: Record<string, unknown>; raw: unknown; agent: AgentDocument; images: readonly BundleImage[]; vectors: readonly BundleVector[]; thumbnail?: Uint8Array; tokens: ExtractedTokens; }
+export interface BundleReadyAsset { id: string; sourceNodeId: string; bytes: Uint8Array; format: 'png'; width: number; height: number; scale: number; sha256: string; }
+export interface BundleInput { outDir: string; manifest: Record<string, unknown>; raw: unknown; agent: AgentDocument; images: readonly BundleImage[]; vectors: readonly BundleVector[]; readyAssets: readonly BundleReadyAsset[]; thumbnail?: Uint8Array; tokens: ExtractedTokens; }
 
 export async function writeBundle(input: BundleInput): Promise<void> {
   if (await exists(input.outDir)) throw new FigctxError('OUTPUT_EXISTS', `Output directory exists: ${input.outDir}`);
@@ -17,6 +18,7 @@ export async function writeBundle(input: BundleInput): Promise<void> {
   try {
     await mkdir(join(temporary, 'assets/images'), { recursive: true });
     await mkdir(join(temporary, 'assets/vectors'), { recursive: true });
+    await mkdir(join(temporary, 'assets/ready'), { recursive: true });
     await mkdir(join(temporary, 'frames'), { recursive: true });
     await writeJson(join(temporary, 'manifest.json'), input.manifest);
     await writeJson(join(temporary, 'document.raw.json'), input.raw);
@@ -33,6 +35,13 @@ export async function writeBundle(input: BundleInput): Promise<void> {
       imageIndex.push({ hash: image.hash, path, format: image.format });
     }
     await writeJson(join(temporary, 'assets/images.json'), { contractVersion: '1', images: imageIndex });
+    const readyAssetIndex: Array<Omit<BundleReadyAsset, 'bytes'> & { path: string }> = [];
+    for (const asset of input.readyAssets) {
+      const path = `assets/ready/${safeName(asset.id)}.png`;
+      await writeFile(join(temporary, path), asset.bytes);
+      readyAssetIndex.push({ id: asset.id, sourceNodeId: asset.sourceNodeId, path, format: asset.format, width: asset.width, height: asset.height, scale: asset.scale, sha256: asset.sha256 });
+    }
+    await writeJson(join(temporary, 'assets/ready.json'), { contractVersion: '1', readyAssets: readyAssetIndex });
     const vectorIndex: Array<{ blobId: number; path: string; format: 'kiwi-vector-network'; compression: 'gzip' }> = [];
     for (const vector of input.vectors) { const path = `assets/vectors/vector-network-${vector.blobId}.bin.gz`; await writeFile(join(temporary, path), await gzipBytes(vector.bytes)); vectorIndex.push({ blobId: vector.blobId, path, format: 'kiwi-vector-network', compression: 'gzip' }); }
     await writeJson(join(temporary, 'assets/vectors.json'), { contractVersion: '1', vectors: vectorIndex });
@@ -41,7 +50,8 @@ export async function writeBundle(input: BundleInput): Promise<void> {
       const directory = join(temporary, 'frames', safeName(node.id));
       await mkdir(directory, { recursive: true });
       const assets = node.assetRefs.map((asset) => `- asset: \`${asset.path}\` (${asset.hash})`).join('\n');
-      await writeFile(join(directory, 'context.md'), `# ${node.name}\n\n- id: \`${node.id}\`\n- type: ${node.type}\n- children: ${node.childIds.length}${assets ? `\n${assets}` : ''}\n`);
+      const readyAssets = node.readyAssetRefs.map((asset) => `- ready asset: \`${asset.path}\` (${asset.sourceNodeId})`).join('\n');
+      await writeFile(join(directory, 'context.md'), `# ${node.name}\n\n- id: \`${node.id}\`\n- type: ${node.type}\n- children: ${node.childIds.length}${assets ? `\n${assets}` : ''}${readyAssets ? `\n${readyAssets}` : ''}\n`);
     }
     await mkdir(dirname(input.outDir), { recursive: true });
     await rename(temporary, input.outDir);

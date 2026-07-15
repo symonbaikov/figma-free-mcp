@@ -30,7 +30,7 @@ export async function extractFig(sourcePath: string, outDir: string): Promise<Ex
     manifest: { contractVersion: '1', parserVersion: decoded.decoderVersion, status: 'success', sourceFilename: basename(sourcePath), sourceSha256: archive.sourceSha256, ...(originFileKey ? { originFileKey } : {}), canvasVariant: archive.canvasVariant, nodeCount: decoded.nodeChanges.length, visualBaseline: archive.thumbnail ? 'assets/thumbnail.png' : undefined },
     raw: { decoderVersion: decoded.decoderVersion, canvasVersion: decoded.canvasVersion, document: decoded.document },
     agent,
-    images: archive.images, vectors, thumbnail: archive.thumbnail, tokens: extractTokens(agent)
+    images: archive.images, vectors, readyAssets: [], thumbnail: archive.thumbnail, tokens: extractTokens(agent)
   });
   return { agent, outDir };
 }
