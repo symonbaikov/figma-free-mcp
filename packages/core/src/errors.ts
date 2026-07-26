@@ -10,7 +10,9 @@ export const errorCodes = [
   'NODE_REFERENCE_FILE_MISMATCH',
   'INVALID_REFERENCE_IMAGE',
   'REFERENCE_IMAGE_DIMENSION_MISMATCH',
-  'REFERENCE_NOT_FOUND'
+  'REFERENCE_NOT_FOUND',
+  'INVALID_VECTOR_NETWORK',
+  'INVALID_BUNDLE_ASSET'
 ] as const;
 
 export type ErrorCode = (typeof errorCodes)[number];

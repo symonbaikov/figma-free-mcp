@@ -27,6 +27,7 @@ versioned and unsupported variants fail explicitly instead of being guessed.
 figctx extract design.fig --out .figctx/design
 figctx inspect .figctx/design --node <node-id>
 figctx pack .figctx/design --node <node-id> --format codex
+figctx export .figctx/design --node <node-id> --out ./hero.svg
 ```
 
 ## Install and use
@@ -39,7 +40,17 @@ pnpm build
 node packages/cli/dist/main.js extract design.fig --out .figctx/design
 node packages/cli/dist/main.js inspect .figctx/design --node '1-2'
 node packages/cli/dist/main.js pack .figctx/design --node 'https://www.figma.com/design/file/name?node-id=1-2' --format codex
+node packages/cli/dist/main.js export .figctx/design --node '1-2' --out ./hero.svg
 ```
+
+`export` reads the existing local bundle and lazily renders the selected node's
+visible vector-network descendants into one SVG. It never reopens the source
+`.fig`, makes no network request, and leaves the lossless vector blobs intact.
+The first renderer supports vector fills, strokes, opacity, nested transforms,
+straight segments, and cubic Bézier segments. It intentionally skips text and
+unsupported computed shapes, masks, and boolean operations instead of inventing
+geometry; retain those as HTML/CSS or use the original Figma export until a
+future adapter supports them.
 
 ### Pixel-validation workflow
 
@@ -198,6 +209,8 @@ use nonzero exit codes. Initial error codes are:
 - `INVALID_REFERENCE_IMAGE`
 - `REFERENCE_IMAGE_DIMENSION_MISMATCH`
 - `REFERENCE_NOT_FOUND`
+- `INVALID_VECTOR_NETWORK`
+- `INVALID_BUNDLE_ASSET`
 
 ## Tests and fixtures
 
