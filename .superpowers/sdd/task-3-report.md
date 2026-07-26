@@ -42,6 +42,32 @@ Complete with controller recovery.
 - Exact RED command output was not captured because the implementer subagent hung before writing its report.
 - `vector-network.ts` currently supports the simple polygon subset from the plan; real Logika extraction may require parser expansion during Task 4 acceptance.
 
+---
+
+## Review Fix: Transform Matrix And Hidden Visibility
+
+Status: DONE with controller recovery.
+
+RED:
+- Fix-agent added regression coverage for non-translation matrix transforms and hidden vector ancestors before changing renderer behavior.
+- Exact RED output was not preserved because the fix-agent hung before writing its report.
+
+GREEN:
+- `pnpm --filter @figctx/core test -- render-ready-assets.test.ts` passed with 5 render tests.
+- `pnpm test` passed.
+- `pnpm build` passed.
+- `pnpm typecheck` passed.
+
+Files changed:
+- `packages/core/src/render/svg-scene.ts`
+- `packages/core/src/render/targets.ts`
+- `packages/core/test/render-ready-assets.test.ts`
+
+Self-review:
+- SVG rendering now emits full `matrix(a b c d e f)` transforms instead of translation-only transforms.
+- Target selection now excludes hidden nodes and hidden ancestors.
+- Hidden root rendering produces no path content.
+
 ## Review Fixes: Transform Matrix and Hidden Ancestors (2026-07-15 12:19 IDT)
 
 ### RED
